@@ -1,1 +1,19 @@
-# Earphones deployment configuration
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: earphones-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: earphones
+  template:
+    metadata:
+      labels:
+        app: earphones
+    spec:
+      containers:
+      - name: earphones
+        image: <YOUR_ECR_URL>/electronics:latest
+        ports:
+        - containerPort: 80
