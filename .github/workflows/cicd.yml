@@ -1,4 +1,4 @@
-name: CI/CD for Google Store
+name: CI/CD for Google Store (Full Stack)
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 env:
   AWS_REGION: ap-northeast-1
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-1.amazonaws.com
-  SERVICES: "electronics phones computers earphones"
+  SERVICES: "electronics phones computers earphones backend"
   K8S_NAMESPACE: default
   CLUSTER_NAME: abinash
 
@@ -54,7 +54,9 @@ jobs:
             docker push $ECR_REGISTRY/$REPO_NAME:$IMAGE_TAG
 
             # Update deployment.yml with new image
-            sed -i "s|image:.*|image: $ECR_REGISTRY/$REPO_NAME:$IMAGE_TAG|g" $service/deployment.yml
+            if [ -f $service/deployment.yml ]; then
+              sed -i "s|image:.*|image: $ECR_REGISTRY/$REPO_NAME:$IMAGE_TAG|g" $service/deployment.yml
+            fi
           done
 
       # 5. Commit updated deployment files (if any)
@@ -66,7 +68,7 @@ jobs:
           git commit -m "Update image tags in deployment files" || echo "No changes to commit"
           git push || echo "Push failed, probably due to permissions"
 
-      # 6. Configure kubectl for EKS with explicit context
+      # 6. Configure kubectl for EKS
       - name: ☸️ Connect to EKS cluster
         run: |
           aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION --alias github-actions
@@ -81,9 +83,15 @@ jobs:
 
           # Apply all services, deployments, and autoscalers
           for service in $SERVICES; do
-            kubectl apply -f $service/service.yml
-            kubectl apply -f $service/deployment.yml
-            kubectl apply -f $service/autoscaler.yml
+            if [ -f $service/service.yml ]; then
+              kubectl apply -f $service/service.yml
+            fi
+            if [ -f $service/deployment.yml ]; then
+              kubectl apply -f $service/deployment.yml
+            fi
+            if [ -f $service/autoscaler.yml ]; then
+              kubectl apply -f $service/autoscaler.yml
+            fi
           done
 
           # Apply main frontend deployment and service
