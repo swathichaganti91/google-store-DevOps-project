@@ -1,5 +1,4 @@
 name: CI/CD Full Stack Google Store
-
 on:
   push:
     branches:
@@ -14,78 +13,90 @@ env:
 
 permissions:
   contents: write
+  id-token: write  # Required for OIDC
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       # 1. Checkout the repository
-      - name: 🧾 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Configure AWS credentials
-      - name: 🔧 Configure AWS credentials
+      # 2. Configure AWS Credentials via OIDC (Recommended & Secure)
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsEKSFullAccessRole
+          role-session-name: github-eks-session
           aws-region: ${{ env.AWS_REGION }}
 
-      # 3. Login to Amazon ECR
-      - name: 📦 Login to Amazon ECR
+      # 3. Debug AWS Identity (Verify Role Assumption)
+      - name: Verify AWS Identity
+        run: |
+          echo "Assumed Role:"
+          aws sts get-caller-identity
+
+      # 4. Login to Amazon ECR
+      - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      # 4. Loop through all services, build Docker images, and push to ECR
-      - name: 🛠 Build, tag, and push Docker images
+      # 5. Build, tag, and push Docker images
+      - name: Build, tag, and push Docker images
         run: |
           for service in $SERVICES; do
             if [ -d "$service" ]; then
-              echo "🚀 Processing $service..."
+              echo "Processing $service..."
               IMAGE_TAG="${{ github.sha }}"
               REPO_NAME="google-store-$service"
-              
-              # Create ECR repository if not exists
+             
+              # Create ECR repo if not exists
               aws ecr describe-repositories --repository-names $REPO_NAME >/dev/null 2>&1 || \
                 aws ecr create-repository --repository-name $REPO_NAME
-
+              
               IMAGE_URI="$ECR_REGISTRY/$REPO_NAME:$IMAGE_TAG"
-
-              # Build Docker image
+              
+              # Build & push
               docker build -t $IMAGE_URI ./$service
-
-              # Push image
               docker push $IMAGE_URI
-
-              # Update deployment.yml image
+              
+              # Update deployment.yml
               if [ -f $service/deployment.yml ]; then
                 sed -i "s|image:.*|image: $IMAGE_URI|g" $service/deployment.yml
               fi
             else
-              echo "⚠️  Skipping $service, folder not found."
+              echo "Skipping $service, folder not found."
             fi
           done
 
-      # 5. Commit updated deployment files (if any)
-      - name: 🔄 Commit updated deployment files
+      # 6. Commit updated deployment files
+      - name: Commit updated deployment files
         run: |
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
           git add */deployment.yml
-          git commit -m "Update image tags in deployment files" || echo "No changes to commit"
-          git push || echo "Push failed, probably due to permissions"
+          git commit -m "Update image tags in deployment files [skip ci]" || echo "No changes"
+          git push || echo "Nothing to push"
 
-      # 6. Configure kubectl for EKS
-      - name: ☸️ Connect to EKS cluster
+      # 7. Connect to EKS with Role ARN (CRITICAL FIX)
+      - name: Connect to EKS cluster
         run: |
-          aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION --alias github-actions
+          echo "Updating kubeconfig with role assumption..."
+          aws eks update-kubeconfig \
+            --name ${{ env.CLUSTER_NAME }} \
+            --region ${{ env.AWS_REGION }} \
+            --role-arn arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsEKSFullAccessRole \
+            --alias github-actions
+
+          echo "Switching context..."
           kubectl config use-context github-actions
+
+          echo "Testing cluster access..."
           kubectl get nodes
 
-      # 7. Apply all Kubernetes manifests
-      - name: 🚀 Apply Kubernetes manifests
+      # 8. Apply Kubernetes manifests
+      - name: Apply Kubernetes manifests
         run: |
-          # Apply all services and deployments
           for service in $SERVICES; do
             if [ -d "$service" ]; then
               [ -f $service/service.yml ] && kubectl apply -f $service/service.yml
@@ -93,15 +104,16 @@ jobs:
               [ -f $service/autoscaler.yml ] && kubectl apply -f $service/autoscaler.yml
             fi
           done
-
-          # Apply main frontend/backend deployments if exist
           [ -f deployment.yml ] && kubectl apply -f deployment.yml
           [ -f service.yml ] && kubectl apply -f service.yml
-
-          # Apply ingress
           [ -f ingress.yml ] && kubectl apply -f ingress.yml --validate=false
 
-      # 8. Verify deployment
-      - name: ✅ Verify resources
+      # 9. Verify deployment
+      - name: Verify resources
         run: |
-          kubectl get pods,svc,ingress -n $K8S_NAMESPACE
+          echo "Pods:"
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }}
+          echo "Services:"
+          kubectl get svc -n ${{ env.K8S_NAMESPACE }}
+          echo "Ingress:"
+          kubectl get ingress -n ${{ env.K8S_NAMESPACE }}
