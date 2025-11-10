@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: computers
-        image: 049061799945.dkr.ecr.ap-northeast-1.amazonaws.com/shopping-site-computers:52f74d4ce52f7c8ebda776f8fd408e520bd0c1e1
+        image: 049061799945.dkr.ecr.ap-northeast-1.amazonaws.com/shopping-site-computers:9a3aa18e0a4cc43b0f814b2918af822406bd5512
         ports:
         - containerPort: 80

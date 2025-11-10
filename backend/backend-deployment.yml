@@ -64,7 +64,7 @@ jobs:
             docker push $IMAGE_URI
 
             # Update deployment.yml with new image
-            sed -i "s|image:.*|image: $IMAGE_URI|g" "$FOLDER/deployment.yml"
+            sed -i "s|image: 049061799945.dkr.ecr.ap-northeast-1.amazonaws.com/shopping-site-backend:9a3aa18e0a4cc43b0f814b2918af822406bd5512
           done
 
           # --- Backend Service ---
@@ -79,7 +79,7 @@ jobs:
           docker build -t $IMAGE_URI $FOLDER
           docker push $IMAGE_URI
 
-          sed -i "s|image:.*|image: $IMAGE_URI|g" "$FOLDER/backend-deployment.yml"
+          sed -i "s|image: 049061799945.dkr.ecr.ap-northeast-1.amazonaws.com/shopping-site-backend:9a3aa18e0a4cc43b0f814b2918af822406bd5512
 
       # 5️⃣ Commit updated image references
       - name: 🔄 Commit updated YAML files
