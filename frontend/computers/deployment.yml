@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: earphones-deployment
+  name: computers-deployment
   labels:
-    app: earphones
+    app: computers
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: earphones
+      app: computers
   template:
     metadata:
       labels:
-        app: earphones
+        app: computers
     spec:
       containers:
-      - name: earphones
+      - name: computers
         image: 049061799945.dkr.ecr.ap-northeast-1.amazonaws.com/shopping-site-computers:379ca97e11056818783b706364ae13f1d4c72732
         ports:
         - containerPort: 80
