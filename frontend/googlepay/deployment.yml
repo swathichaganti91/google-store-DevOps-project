@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: googlepay-deployment
+  labels:
+    app: googlepay
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: googlepay
+  template:
+    metadata:
+      labels:
+        app: googlepay
+    spec:
+      containers:
+      - name: googlepay
+        image: 049061799945.dkr.ecr.ap-northeast-1.amazonaws.com/shopping-site-googlepay:b23e3fba40a2d533be51bf17e01623bc1b543dbb
+        ports:
+        - containerPort: 80
