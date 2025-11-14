@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: googleclothes-deployment
+  labels:
+    app: googleclothes
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: googleclothes
+  template:
+    metadata:
+      labels:
+        app: googleclothes
+    spec:
+      containers:
+      - name: googleclothes
+        image: 049061799945.dkr.ecr.ap-northeast-1.amazonaws.com/shopping-site-googlepay:fc69c5c2f2c11967bc3ceca1eab41c23357ea786
+        ports:
+        - containerPort: 80
