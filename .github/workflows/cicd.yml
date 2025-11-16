@@ -1,3 +1,4 @@
+
 name: CI/CD for Shopping Site (Frontend + Backend)
 
 on:
@@ -84,15 +85,15 @@ jobs:
 
           git add frontend/**/deployment.yml backend/backend-deployment.yml
 
-          git commit -m "🔄 Update image tags after build [by abinash]" || echo "⚠️ No YAML changes"
+          git commit -m "🔄 Update image tags after build [skip ci]" || echo "⚠️ No YAML changes"
           git push origin main || echo "⚠️ No changes to push"
 
       - name: 🧠 Skip loop if commit was automated
-        if: contains(github.event.head_commit.message, '[by abinash]')
-        run: echo "Skipping re-triggered build due to [by abinash] commit"
+        if: contains(github.event.head_commit.message, '[skip ci]')
+        run: echo "Skipping re-triggered build due to [skip ci] commit"
 
       - name: 🚀 Deploy on EC2
-        if: ${{ !contains(github.event.head_commit.message, '[by abinash]') }}
+        if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
