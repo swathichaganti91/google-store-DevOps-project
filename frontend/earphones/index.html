@@ -307,18 +307,7 @@ body {
   </div>
 </aside>
 
-  <footer class="site-footer">
-  <div class="container">
-    <div class="foot-grid">
-      <div>
-        <strong>Google Store</strong>
-        <p class="muted">developed by abinash kumar</p>
-      </div>
-      <div class="muted">© <span id="year"></span></div>
-    </div>
-  </div>
-</footer>
-
+  
 <!-- Payment Modal -->
 <div id="paymentModal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-modal="true" style="display:none">
   <div class="modal-card" role="document" style="max-width: 480px;">
@@ -418,6 +407,18 @@ body {
 #paymentModal .modal-card { background: #161616; border-radius: 10px; box-shadow: 0 4px 32px #0008; }
 </style>
 
+<footer class="site-footer">
+  <div class="container">
+    <div class="foot-grid">
+      <div>
+        <strong>Google Store</strong>
+        <p class="muted">developed by abinash kumar</p>
+      </div>
+      <div class="muted">© <span id="year"></span></div>
+    </div>
+  </div>
+</footer>
+
 <script src="script.js" defer></script>
 <script>
 
@@ -489,7 +490,8 @@ function getCustomerName() {
       return nameInput.value.trim();
     }
   }
-  return "abinash";
+  // If no user info, send as 'Unknown' as per instructions
+  return "Unknown";
 }
 function getCustomerMobile() {
   let activeTab = window._currentPaymentTab || 'UPI';
@@ -502,7 +504,8 @@ function getCustomerMobile() {
       return mobileInput.value.trim();
     }
   }
-  return "6202965190";
+  // If no user info, send as '0000000000' as per instructions
+  return "0000000000";
 }
 function isValidMobile(mobile) {
   return /^[0-9]{10,14}$/.test(mobile);
@@ -519,7 +522,6 @@ function isCustomerFormValid() {
   }
   return true;
 }
-
 // Payment Modal Logic
 const paymentModal = document.getElementById('paymentModal');
 const paymentTabs = {
@@ -576,130 +578,110 @@ function copyUPIID() {
   alert("UPI ID Copied: " + input.value);
 }
 
-// --- Upload helper (talks to Flask/S3) ---
-// Send receipt copy for admin (abinash) record purposes
-async function uploadReceiptToS3(receiptText, mobile) {
+// =========================
+// AUTO GENERATE + UPLOAD RECEIPT
+// =========================
+
+// Upload receipt to backend API
+// NOTE: 'mobile' is NOT sent anymore due to backend MySQL schema error.
+async function uploadReceiptToS3(receiptText, customerMobile) {
   try {
     const now = Date.now();
-    const receiptFileName = `GoogleStoreReceipt_${mobile}_${now}.txt`;
-    const res = await fetch("http://18.181.35.96/upload_receipt", {
+    const receiptFileName = `GoogleStoreReceipt_${customerMobile}_${now}.txt`;
+    const res = await fetch("http://18.181.35.96:5002/save-receipts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // Remove 'mobile' field from payload due to backend column error
       body: JSON.stringify({
-        receipt_text: receiptText,
-        mobile: mobile,
-        receipt_filename: receiptFileName
+        filename: receiptFileName,
+        receipt_text: receiptText
       })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Upload failed");
-    // Only show this info: receipt copy saved to admin abinash
-    alert("A copy of your receipt has been saved by admin (abinash).");
-    return data.s3_url;
+    console.log("Receipt Saved:", data);
+    alert("A copy of your receipt has been saved.");
+    return data;
   } catch (err) {
+    console.error("Upload Error:", err);
     alert("Error uploading receipt: " + err.message);
-    console.error("❌ Error uploading receipt:", err);
   }
 }
 
-// --- Enhanced: receipt with product, purchased details, customer info and product small image
-async function viewReceipt() {
-  const customerName = getCustomerName();
-  const customerMobile = getCustomerMobile();
+// Main function: Generate + Upload the Receipt
+async function autoSendReceiptToS3() {
+  // Always use fallback values for "Customer Name" and "Mobile" if blank, and always send the section
+  let customerName = getCustomerName();
+  let customerMobile = getCustomerMobile();
+  if (!customerName || customerName.trim() === "") customerName = "Unknown";
+  if (!customerMobile || customerMobile.trim() === "") customerMobile = "0000000000";
   const date = new Date();
-  const total = document.getElementById('totalPaymentAmount').textContent;
+  const total = document.getElementById("totalPaymentAmount")?.textContent || "0";
   const products = extractCartProducts();
-  let itemsText = '';
-  let itemsHTML = '';
 
+  // Format product lines
+  let itemsText = "Products Purchased:\n";
   if (products.length > 0) {
-    itemsText += 'Products Purchased:\n';
-    itemsHTML = `<table style="width:100%;border-collapse:collapse;font-size:1em;">
-      <thead>
-        <tr>
-          <th style="border-bottom:1px solid #eee;text-align:left;padding:4px 0;">Product</th>
-          <th style="border-bottom:1px solid #eee;text-align:center;padding:4px 0;">Qty</th>
-          <th style="border-bottom:1px solid #eee;text-align:right;padding:4px 0;">Price</th>
-        </tr>
-      </thead><tbody>`;
     products.forEach(p => {
-      itemsText += `- ${p.name || 'Product'} | Qty: ${p.qty || 1} | Price: ${p.price || ''}\n`;
-      itemsHTML += `
-        <tr>
-          <td style="padding:3px 0;">${p.name}</td>
-          <td style="text-align:center;">${p.qty}</td>
-          <td style="text-align:right;">${p.price}</td>
-        </tr>`;
+      itemsText += `- ${p.name || ''} | Qty: ${p.qty || ''} | Price: ${p.price || ''}\n`;
     });
-    itemsHTML += `</tbody></table>`;
   } else {
-    itemsText = '- Purchased Phones\n';
-    itemsHTML = 'Purchased Phones';
+    // Always show this section, even if no products
+    itemsText += "- No product details found\n";
   }
 
-  const lines = [
-    'Google Store Receipt',
-    '----------------------------',
-    `Date: ${date.toLocaleString()}`,
-  ];
-  lines.push(`Name: ${customerName}`);
-  lines.push(`Mobile: ${customerMobile}`);
-  lines.push(itemsText.trim());
-  lines.push('----------------------------');
-  lines.push(`Total Paid: ${total}`);
-  lines.push('Payment Successful!');
-  lines.push('----------------------------');
-  lines.push('Developed by abinash kumar');
+  // Always include Customer Name and Mobile lines, even if default values
+  const receiptText = `
+Google Store Receipt
+-------------------------------------
+Date: ${date.toLocaleString()}
+Customer Name: ${customerName}
+Mobile: ${customerMobile}
+${itemsText}
+-------------------------------------
+Total Paid: ${total}
+Payment Successful!
+-------------------------------------
+Developed by: Abinash Kumar
+  `.trim();
 
-  const receiptText = lines.join('\n');
-
-  let htmlCustomer = '';
-  htmlCustomer += `<div style="font-size:1.05em;margin-bottom:4px;"><b>Name:</b> ${customerName}</div>`;
-  htmlCustomer += `<div style="font-size:1.05em;margin-bottom:10px;"><b>Mobile:</b> ${customerMobile}</div>`;
-
-  const receiptHtml = `
-    <div style="font-family:sans-serif;max-width:430px;margin:0 auto;border:1px solid #eee;border-radius:8px;padding:24px;box-shadow:0 2px 8px #0002;">
-      <h2 style="text-align:center;color:#4dd784;margin-top:0;">Google Store - Receipt</h2>
-      <div style="font-size:1.05em;margin:10px 0;"><b>Date:</b> ${date.toLocaleString()}</div>
-      ${htmlCustomer}
-      <div style="margin:15px 0 14px 0;"><b>Purchased Items:</b></div>
-      <div style="margin-bottom:12px">${itemsHTML}</div>
-      <div style="font-size:1.2em;margin-bottom:20px;"><b>Total Paid:</b> <span style="color:#4dd784;">${total}</span></div>
-      <div style="margin-bottom:18px;color:#5c5c5c;">Payment Successful via Card/NetBanking/UPI</div>
-      <div style="font-size:0.9em;color:#333;text-align:center;">Developed by abinash kumar</div>
-    </div>
-  `;
-  const win = window.open("", "_blank", "width=480,height=600");
-  if (win) {
-    win.document.write("<title>Google Store Receipt</title>");
-    win.document.write(receiptHtml);
-    win.document.close();
-  }
+  // Upload the receipt (do NOT send 'mobile' field in payload)
+  await uploadReceiptToS3(receiptText, customerMobile);
 }
+
+// =========================
+// CALL THIS WHEN PAYMENT SUCCESS
+// =========================
+// Example:
+// document.getElementById("paymentSuccessBtn").addEventListener("click", autoSendReceiptToS3);
+
 
 // Download receipt as text file (with products and customer info)
 function downloadReceipt() {
-  const customerName = getCustomerName();
-  const customerMobile = getCustomerMobile();
+  // Always use fallback values for "Customer Name" and "Mobile" if blank, and always send the section
+  let customerName = getCustomerName();
+  let customerMobile = getCustomerMobile();
+  if (!customerName || customerName.trim() === "") customerName = "Unknown";
+  if (!customerMobile || customerMobile.trim() === "") customerMobile = "0000000000";
   const date = new Date();
   const total = document.getElementById('totalPaymentAmount').textContent;
   let products = extractCartProducts();
-  let itemsText = '';
-  
+  let itemsText = 'Products Purchased:\n';
+
   if (products.length > 0) {
-    itemsText += 'Products Purchased:' + "\n";
     products.forEach(p => {
       itemsText += `- ${p.name || 'Product'}${p.desc ? ` (${p.desc})`:''} | Qty: ${p.qty || 1} | Price: ${p.price || ''}\n`;
     });
   } else {
-    itemsText = '- Purchased Phones\n';
+    // Always show this header, even if no products
+    itemsText += "- No product details found\n";
   }
 
   const lines = [
     'Google Store Receipt',
     '----------------------------',
     `Date: ${date.toLocaleString()}`,
-    `Name: ${customerName}`,
+    `Customer Name: ${customerName}`,
     `Mobile: ${customerMobile}`,
     itemsText.trim(),
     '----------------------------',
@@ -783,43 +765,6 @@ async function handlePaymentDone(method) {
   // clearCartAfterPayment(); // optional
 }
 
-// Helper generates receipt and uploads to S3 per mobile-number _every_ time payment is done, always new file
-async function autoSendReceiptToS3() {
-  const customerName = getCustomerName();
-  const customerMobile = getCustomerMobile();
-  const date = new Date();
-  const total = document.getElementById('totalPaymentAmount').textContent;
-  const products = extractCartProducts();
-  let itemsText = '';
-
-  if (products.length > 0) {
-    itemsText += 'Products Purchased:\n';
-    products.forEach(p => {
-      itemsText += `- ${p.name || 'Product'} | Qty: ${p.qty || 1} | Price: ${p.price || ''}\n`;
-    });
-  } else {
-    itemsText = '- Purchased Phones\n';
-  }
-
-  const lines = [
-    'Google Store Receipt',
-    '----------------------------',
-    `Date: ${date.toLocaleString()}`,
-    `Name: ${customerName}`,
-    `Mobile: ${customerMobile}`,
-    itemsText.trim(),
-    '----------------------------',
-    `Total Paid: ${total}`,
-    'Payment Successful!',
-    '----------------------------',
-    'Developed by abinash kumar'
-  ];
-  const receiptText = lines.join('\n');
-
-  // ALWAYS save as new S3 file named for this mobile and this unique timestamp
-  await uploadReceiptToS3(receiptText, customerMobile);
-}
-
 // Attach event to checkout button
 document.addEventListener('DOMContentLoaded', function() {
   const checkoutBtn = document.getElementById('checkout');
@@ -878,11 +823,13 @@ paymentModal.addEventListener('mousedown', function(e) {
     closePaymentModal();
 });
 
+
 </script>  
   
 <script src="script.js" defer></script>
 </body>
 </html>
+
 
 
 
